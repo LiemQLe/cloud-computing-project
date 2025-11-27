@@ -1,7 +1,0 @@
-#!/home/liem/Uni/semester5/cloudcomputing/cloud-computing-project/3-three-data-main/backend/.venv/bin/python
-import sys
-from watchdog.watchmedo import main
-if __name__ == '__main__':
-    if sys.argv[0].endswith('.exe'):
-        sys.argv[0] = sys.argv[0][:-4]
-    sys.exit(main())
