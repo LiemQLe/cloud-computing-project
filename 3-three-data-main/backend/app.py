@@ -16,7 +16,15 @@ logger = logging.getLogger()
 # --- Setup Google Cloud Logging client ---
 logging_client = gcloud_logging.Client()
 log_name = "flask-app-log"  # custom log stream name
-log = logging_client.log(log_name)
+
+# Initialize Google Cloud Logging client
+client = gcloud_logging.Client()
+
+# Attach Cloud Logging handler to the root logger
+client.setup_logging()
+
+# Get logger
+logger = logging.getLogger(log_name)
 
 
 def init_connection_pool() -> sqlalchemy.engine.base.Engine:
@@ -193,16 +201,9 @@ def save_question(
 def health_check() -> Response:
     return Response(status=200, response="OK")
 
-def log_error(message: str):
-    """Write an error log entry to Cloud Logging."""
-    metadata = {"severity": "ERROR"}
-    entry = log.entry(metadata, {"message": message})
-    log.write(entry)
-
 @app.errorhandler(500)
 def internal_error(e):
-    log_error("Internal server error")
-    logging.error(
+    logger.error(
         "app.errorhandler - Internal server error",
         extra={
             "json_fields": {
