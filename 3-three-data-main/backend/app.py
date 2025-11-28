@@ -143,6 +143,11 @@ def save_question(db: sqlalchemy.engine.base.Engine, question: str, answer1: str
         response=f"Question successfully saved at time {time_cast}!",
     )
 
+# Monitoring 7.1.6 Assignment
+
+@app.route("/health", methods=["GET"])
+def health_check() -> Response:
+    return Response(status=200, response="OK")
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8080, debug=True)
