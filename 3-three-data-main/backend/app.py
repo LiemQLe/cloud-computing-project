@@ -1,5 +1,5 @@
 from __future__ import annotations
-from flask import Flask, request, Response
+from flask import Flask, request, Response, jsonify
 import datetime
 import logging
 import os
@@ -7,10 +7,16 @@ import sqlalchemy
 
 from connect_connector_auto_iam_authn import connect_with_connector_auto_iam_authn
 from connect_unix import connect_unix_socket
+from google.cloud import logging as gcloud_logging
 
 app = Flask(__name__)
 
 logger = logging.getLogger()
+
+# --- Setup Google Cloud Logging client ---
+logging_client = gcloud_logging.Client()
+log_name = "flask-app-log"  # custom log stream name
+log = logging_client.log(log_name)
 
 
 def init_connection_pool() -> sqlalchemy.engine.base.Engine:
@@ -76,10 +82,19 @@ def add_question() -> Response:
     # answer3 = request.form["answer3"]
     # answer4 = request.form["answer4"]
     # correct_answer = request.form["correct_answer"]
-    
+
     data = request.get_json()
-    return save_question(db, data["question"], data["answer1"], data["answer2"], data["answer3"], data["answer4"], data["correct_answer"])
+    return save_question(
+        db,
+        data["question"],
+        data["answer1"],
+        data["answer2"],
+        data["answer3"],
+        data["answer4"],
+        data["correct_answer"],
+    )
     # return save_question(db, question, answer1, answer2, answer3, answer4, correct_answer)
+
 
 @app.route("/questions", methods=["GET"])
 def get_questions() -> Response:
@@ -88,16 +103,33 @@ def get_questions() -> Response:
     with db.connect() as conn:
         # Execute the query and fetch all results
         question_rows = conn.execute(
-            sqlalchemy.text(
-                "SELECT * from quiz_questions"
-            )
+            sqlalchemy.text("SELECT * from quiz_questions")
         ).fetchall()
         for row in question_rows:
-            questions.append({"id": row[0], "question": row[1], "answer1": row[2], "answer2": row[3], "answer3": row[4], "answer4": row[5], "correct_answer": row[6], "time_cast": row[7]})
+            questions.append(
+                {
+                    "id": row[0],
+                    "question": row[1],
+                    "answer1": row[2],
+                    "answer2": row[3],
+                    "answer3": row[4],
+                    "answer4": row[5],
+                    "correct_answer": row[6],
+                    "time_cast": row[7],
+                }
+            )
         return questions
 
 
-def save_question(db: sqlalchemy.engine.base.Engine, question: str, answer1: str, answer2: str, answer3: str, answer4: str, correct_answer: int) -> Response:
+def save_question(
+    db: sqlalchemy.engine.base.Engine,
+    question: str,
+    answer1: str,
+    answer2: str,
+    answer3: str,
+    answer4: str,
+    correct_answer: int,
+) -> Response:
     """Saves a single question into the database.
 
     Args:
@@ -123,7 +155,18 @@ def save_question(db: sqlalchemy.engine.base.Engine, question: str, answer1: str
         # Using a with statement ensures that the connection is always released
         # back into the pool at the end of statement (even if an error occurs)
         with db.connect() as conn:
-            conn.execute(stmt, parameters={"question": question, "answer1": answer1, "answer2": answer2, "answer3": answer3, "answer4": answer4, "correct_answer": correct_answer, "time_cast": time_cast})
+            conn.execute(
+                stmt,
+                parameters={
+                    "question": question,
+                    "answer1": answer1,
+                    "answer2": answer2,
+                    "answer3": answer3,
+                    "answer4": answer4,
+                    "correct_answer": correct_answer,
+                    "time_cast": time_cast,
+                },
+            )
             conn.commit()
     except Exception as e:
         # If something goes wrong, handle the error in this section. This might
@@ -143,11 +186,33 @@ def save_question(db: sqlalchemy.engine.base.Engine, question: str, answer1: str
         response=f"Question successfully saved at time {time_cast}!",
     )
 
-# Monitoring 7.1.6 Assignment
+
+# Monitoring 7.1.6 assignment
 
 @app.route("/health", methods=["GET"])
 def health_check() -> Response:
     return Response(status=200, response="OK")
+
+def log_error(message: str):
+    """Write an error log entry to Cloud Logging."""
+    metadata = {"severity": "ERROR"}
+    entry = log.entry(metadata, {"message": message})
+    log.write(entry)
+
+@app.errorhandler(500)
+def internal_error(e):
+    log_error("Internal server error")
+    logging.error(
+        "app.errorhandler - Internal server error",
+        extra={
+            "json_fields": {
+                "endpoint": request.path, 
+                "status": 500, 
+                "error": str(e)
+            }
+        }
+    )
+    return {"error": "Internal server error"}, 500
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8080, debug=True)
